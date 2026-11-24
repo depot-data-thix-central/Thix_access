@@ -1,0 +1,34 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Android / signing / local SDK
+android/.gradle/
+android/local.properties
+android/key.properties
+android/**/key.jks
+android/**/key.properties
+
+# iOS (future target)
+ios/Flutter/.last_build_id
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db

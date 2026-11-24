@@ -1,0 +1,9 @@
+{
+  "name": "THIX ACCESS",
+  "short_name": "THIX ACCESS",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#F7FAFC",
+  "theme_color": "#176B87",
+  "description": "Assistant de communication accessible."
+}
