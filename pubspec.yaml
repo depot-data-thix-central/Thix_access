@@ -1,22 +1,188 @@
+# =============================================================================
+# THIX ACCESS — client Flutter (Android + iOS)
+# Cahier des charges v1.1 : §13 architecture modulaire, §18 principes non nég.
+# -----------------------------------------------------------------------------
+# RÈGLES DE CE FICHIER
+# 1. AUCUNE clé secrète ici, ni via --dart-define (§18.4). Une clé passée en
+#    dart-define est extractible de l'APK. Seules des valeurs PUBLIQUES :
+#    SUPABASE_URL et la clé publishable/anon (protégée par RLS côté serveur).
+# 2. Une dépendance = un besoin réel de la phase en cours. Les blocs "PHASE n"
+#    sont commentés volontairement : activation au moment du développement.
+# 3. pubspec.lock DOIT être committé (application, pas bibliothèque).
+# 4. Versions du socle vérifiées sur pub.dev le 25/11/2026.
+# 5. Ne jamais déclarer un dossier d'assets qui n'existe pas : le build échoue.
+# =============================================================================
+
 name: thix_access
-description: Application mobile d'assistance à la communication THIX ACCESS.
+description: >-
+  THIX ACCESS — assistance à la communication entre personnes sourdes,
+  malentendantes et entendantes : reconnaissance de signes, reconnaissance
+  vocale, traduction en gloses et avatar 3D.
 publish_to: 'none'
 version: 0.1.0+1
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
+  # Aligné sur la toolchain THIX ID. Si `flutter pub get` refuse, remonter la
+  # borne basse (Riverpod 3.5 / freezed 4 / camera 0.12 exigent un Dart récent).
+  sdk: '>=3.9.0 <4.0.0'
+  flutter: '>=3.35.0'
 
 dependencies:
   flutter:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+
+  # --- État & injection de dépendances : Riverpod 3 + codegen ---------------
+  # §18.10 architecture évolutive. Pas de StateProvider/StateNotifierProvider
+  # (déplacés vers flutter_riverpod/legacy.dart en 3.x).
+  flutter_riverpod: ^3.5.0
+  riverpod_annotation: ^4.0.8
+
+  # --- Modèles immuables & sérialisation -----------------------------------
+  # freezed 4 + json_serializable : ajouter
+  #   analyzer: errors: invalid_annotation_target: ignore
+  # dans analysis_options.yaml, sinon warnings sur tous les modèles.
+  freezed_annotation: ^3.1.0
+  json_annotation: ^4.9.0
+
+  # --- Navigation déclarative ---------------------------------------------
+  # Remplace le Navigator manuel de shared/router/app_router.dart (P0-4).
+  # Indispensable pour les deep links de connexion Supabase (§9).
+  go_router: ^18.1.4
+
+  # --- Backend métier UNIQUE : Supabase (§9, §18.3) ------------------------
+  # Auth + Postgres/RLS + Storage + Edge Functions. Le cache local (drift,
+  # phase 6) est un cache TECHNIQUE, jamais une seconde base métier.
+  supabase_flutter: ^2.18.3
+
   cupertino_icons: ^1.0.8
+
+  # ===========================================================================
+  # PHASE 3 — Voix : STT / TTS / audio (§6)
+  # ---------------------------------------------------------------------------
+  # flutter pub add permission_handler connectivity_plus
+  # flutter pub add speech_to_text flutter_tts
+  # flutter pub add audio_session          # focus audio + AEC (anti-écho §8)
+  #
+  # permission_handler 13.0.2 : compileSdk 35+ ; sur Android, `status` ne
+  # renvoie plus `permanentlyDenied` — il faut brancher sur le retour de
+  # `request()`. Sur iOS 13+, activation via Info.plist (SPM) ou macros Podfile.
+  # ===========================================================================
+
+  # ===========================================================================
+  # PHASE 4 — Caméra & reconnaissance de signes (§5)
+  # ---------------------------------------------------------------------------
+  # flutter pub add camera                # 0.12.2 : Android SDK 24+, iOS 13+
+  # flutter pub add wakelock_plus device_info_plus
+  # flutter pub add vector_math           # normalisation des landmarks
+  #
+  # MediaPipe n'a PAS de plugin Flutter officiel : implémentation native
+  # Kotlin (CameraX + MediaPipe Tasks) + Swift (AVFoundation), pont typé :
+  # flutter pub add dev:pigeon
+  # Inférence on-device (si un modèle pré-entraîné est retenu au PoC) :
+  # flutter pub add tflite_flutter        # LiteRT — vérifier la maintenance
+  #
+  # ⚠️ FORCER minSdk 24 dans android/app/build.gradle (voir notes plus bas).
+  # ===========================================================================
+
+  # ===========================================================================
+  # PHASE 5 — Avatar (§7)
+  # ---------------------------------------------------------------------------
+  # V1 recommandée : avatar 3D PRÉ-RENDU en clips + fondus (identique sur les
+  # 2 OS, aucun code natif 3D, démarrage < 100 ms).
+  # flutter pub add video_player          # clips alpha
+  # flutter pub add rive                  # transitions / UI animée
+  # V2 (rig temps réel) — à ne PAS activer en V1 :
+  # flutter pub add flutter_unity_widget  # +40..90 Mo, build iOS lourd, OTA
+  # ===========================================================================
+
+  # ===========================================================================
+  # TRANSVERSE — stockage, réseau, résilience (contexte RDC : réseau instable)
+  # ---------------------------------------------------------------------------
+  # flutter pub add dio                        # interceptors, retry, quotas
+  # flutter pub add flutter_secure_storage     # session Supabase chiffrée
+  # flutter pub add shared_preferences         # préférences non sensibles
+  # flutter pub add drift dev:drift_dev        # cache technique + file offline
+  # flutter pub add path_provider path         # modèles téléchargés (§9)
+  # flutter pub add crypto                     # checksum des modèles
+  # flutter pub add intl                       # formats fr-FR
+  # ===========================================================================
+
+  # ===========================================================================
+  # PHASE 6/7 — Observabilité, OTA, publication (§14, §17)
+  # ---------------------------------------------------------------------------
+  # flutter pub add sentry_flutter        # ou firebase_core firebase_crashlytics
+  # flutter pub add package_info_plus
+  # flutter pub add shorebird_code_push
+  # ⚠️ Shorebird ne patche QUE le Dart. Modèles IA et clips se téléchargent au
+  #    runtime via model_versions + file_assets (checksum + URL signée).
+  #    Vérifier le statut du support iOS avant tout engagement OTA iOS.
+  # ===========================================================================
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_lints: ^5.0.0
+
+  flutter_lints: ^6.0.0
+
+  # --- Codegen : dart run build_runner build --delete-conflicting-outputs ---
+  build_runner: ^2.17.1
+  riverpod_generator: ^4.0.10
+  freezed: ^4.0.3
+  json_serializable: ^6.15.2
+
+  # ⚠️ riverpod_lint 3.x n'est PAS une dev_dependency : il s'active dans
+  #    analysis_options.yaml via la section `plugins:` du nouvel analyzer
+  #    plugin system (fin de custom_lint).
+  #
+  # plugins:
+  #   riverpod_lint: ^3.2.0
+
+  # --- Tests (§14 Phase 6, §17 rapport de tests) ---------------------------
+  # flutter pub add dev:mocktail
+  # flutter pub add dev:integration_test   # ou sdk: flutter
+  # flutter pub add dev:patrol             # tests bout-en-bout natifs
+  # flutter pub add dev:golden_toolkit
+
+  # --- Branding (P0-1 : icônes manquantes) ---------------------------------
+  # flutter pub add dev:flutter_launcher_icons dev:flutter_native_splash
+  # dart run flutter_launcher_icons
+  # dart run flutter_native_splash:create
+
+# =============================================================================
+# NOTES PLATEFORME (à répercuter dans android/ et ios/)
+# -----------------------------------------------------------------------------
+# android/app/build.gradle :
+#   defaultConfig { minSdk 24 }            # camera 0.12.2 + MediaPipe Tasks
+#   compileSdk 36 / targetSdk conforme aux exigences Play 2026
+#   + signingConfigs (keystore hors dépôt, key.properties déjà gitignoré)
+# AndroidManifest.xml : INTERNET, CAMERA, RECORD_AUDIO,
+#   MODIFY_AUDIO_SETTINGS, WAKE_LOCK + <uses-feature camera required="false">
+#   + src/debug/AndroidManifest.xml avec INTERNET (hot-reload réseau)
+# ios/Runner/Info.plist : NSCameraUsageDescription, NSMicrophoneUsageDescription,
+#   NSSpeechRecognitionUsageDescription (justification accessibilité explicite)
+# =============================================================================
 
 flutter:
   uses-material-design: true
+
+  # ⚠️ Décommenter UNIQUEMENT après création des dossiers ET d'au moins un
+  # fichier réel dans chacun (un dossier vide fait échouer flutter build).
+  # assets:
+  #   - assets/lexicon/       # lexique de gloses V1 validé (§18.6)
+  #   - assets/animations/    # clips gloss -> animation (§18.7)
+  #   - assets/avatar/        # GLB / textures
+  #   - assets/models/        # petits modèles embarqués (VAD, dactylologie)
+  #   - assets/i18n/
+
+  # fonts:
+  #   - family: ThixSans
+  #     fonts:
+  #       - asset: assets/fonts/ThixSans-Regular.ttf
+  #       - asset: assets/fonts/ThixSans-SemiBold.ttf
+  #         weight: 600
+
+# dependency_overrides:
+#   ⚠️ Interdit en release : masque les conflits de versions. Uniquement en
+#   debug local, avec un commentaire daté et une issue de retrait.
